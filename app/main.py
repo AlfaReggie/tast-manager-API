@@ -1,18 +1,20 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
-app = FastAPI(title="Operation September API")
+from app.db.database import Base, engine
+from app.models import Task, User
 
 
-@app.get("/")
-def read_root():
-    return {
-        "message": "Backend is running",
-        "project": "Operation September"
-    }
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    Base.metadata.create_all(bind=engine)
+    yield
+
+
+app = FastAPI(lifespan=lifespan)
 
 
 @app.get("/health")
-def health_check():
-    return {
-        "status": "ok"
-    }
+def health():
+    return {"status": "ok"}

@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from app.db.dependencies import get_db
 from app.models.task import Task
 from app.models.user import User
-from app.schemas.task import TaskCreate, TaskRead
+from app.schemas.task import TaskCreate, TaskRead, TaskUpdate
 
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -32,11 +32,18 @@ def create_task(task_in: TaskCreate, db: Session = Depends(get_db)):
 
 @router.get("/", response_model=list[TaskRead])
 def list_tasks(
+    status: str | None = Query(default=None),
     limit: int = Query(default=20, ge=1, le=100),
     offset: int = Query(default=0, ge=0),
     db: Session = Depends(get_db),
 ):
-    stmt = select(Task).order_by(Task.id).limit(limit).offset(offset)
+    stmt = select(Task)
+
+    if status is not None:
+        stmt = stmt.where(Task.status == status)
+        
+    stmt = stmt.order_by(Task.id).limit(limit).offset(offset)
+    
     tasks = db.scalars(stmt).all()
     return tasks
 
@@ -47,3 +54,29 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
     if task is None:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
+
+
+@router.patch("/{task_id}", response_model=TaskRead)
+def update_task(task_id: int, task_in: TaskUpdate, db: Session = Depends(get_db)):
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    update_data = task_in.model_dump(exclude_unset=True)
+
+    for field, value in update_data.items():
+        setattr(task, field, value)
+
+    db.commit()
+    db.refresh(task)
+    return task
+
+
+@router.delete("/{task_id}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.get(Task, task_id)
+    if task is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+
+    db.delete(task)
+    db.commit()
